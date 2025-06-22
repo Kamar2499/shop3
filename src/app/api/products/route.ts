@@ -27,6 +27,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
+    const size = searchParams.get('size');
     const limit = parseInt(searchParams.get('limit') || '0');
 
     // Build SQL query conditions
@@ -42,6 +43,16 @@ export async function GET(request: Request) {
     if (search) {
       queryStr += ` AND ("name" ILIKE $${paramIndex} OR "description" ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    if (size) {
+      queryStr += ` AND (
+        "specifications"->>'size' = $${paramIndex} OR
+        "specifications"->'sizes' @> $${paramIndex}::jsonb OR
+        "size" = $${paramIndex}::text
+      )`;
+      params.push(`"${size}"`);
       paramIndex++;
     }
 

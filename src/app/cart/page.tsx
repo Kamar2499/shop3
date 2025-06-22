@@ -1,153 +1,202 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import Image from 'next/image';
+import { Trash2, Minus, Plus, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
-
-interface CartItem {
-  id: string;
-  productId: string;
-  quantity: number;
-  size: string | null;
-  color: string | null;
-  product: { // Assuming product details are included
-    id: string;
-    name: string;
-    price: number;
-    imageUrl: string; // Assuming imageUrl is available
-  };
-}
+import { useRouter } from 'next/navigation';
+import { useCart } from '@/contexts/CartContext';
+import Image from 'next/image';
 
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const { 
+    items: cartItems, 
+    removeFromCart, 
+    updateQuantity, 
+    clearCart,
+    totalItems, 
+    totalPrice 
+  } = useCart();
+  
+  const [isUpdating, setIsUpdating] = useState<Record<string, boolean>>({});
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
-  useEffect(() => {
-    const fetchCart = async () => {
-      try {
-        setIsLoading(true);
-        // Replace with your actual API endpoint for fetching cart data
-        const response = await fetch('/api/cart'); 
-        
-        if (!response.ok) {
-          throw new Error('Не удалось загрузить корзину');
-        }
-        
-        const data = await response.json();
-        // Assuming the API returns an object with an 'items' array
-        setCartItems(data.items || []); 
-
-      } catch (err) {
-        console.error('Ошибка при получении корзины:', err);
-        setError(err instanceof Error ? err.message : 'Произошла ошибка');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchCart();
-  }, []);
-
-  const handleUpdateQuantity = (itemId: string, newQuantity: number) => {
-    // TODO: Implement API call to update item quantity
-    console.log(`Update item ${itemId} quantity to ${newQuantity}`);
-    // After successful API call, refetch cart or update state
+  const handleCheckout = async () => {
+    try {
+      setIsCheckingOut(true);
+      // Здесь будет логика оформления заказа
+      console.log('Оформление заказа:', cartItems);
+      // Перенаправляем на страницу оформления заказа
+      router.push('/checkout');
+    } catch (error) {
+      console.error('Ошибка при оформлении заказа:', error);
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
-  const handleRemoveItem = (itemId: string) => {
-    // TODO: Implement API call to remove item
-    console.log(`Remove item ${itemId}`);
-    // After successful API call, refetch cart or update state
+  const handleUpdateQuantity = async (itemId: string, newQuantity: number) => {
+    if (newQuantity < 1) return;
+    try {
+      setIsUpdating(prev => ({ ...prev, [itemId]: true }));
+      await updateQuantity(itemId, newQuantity);
+    } catch (error) {
+      console.error('Ошибка при обновлении количества:', error);
+    } finally {
+      setIsUpdating(prev => ({ ...prev, [itemId]: false }));
+    }
   };
-
-  const totalAmount = cartItems.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0
-  );
-
-  if (isLoading) {
-    return (
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex justify-center">
-          <Loader2 className="mr-2 h-8 w-8 animate-spin" /> Загрузка корзины...
-        </div>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main className="container mx-auto px-4 py-8">
-        <div className="text-red-500">Ошибка: {error}</div>
-      </main>
-    );
-  }
-
-  if (cartItems.length === 0) {
-    return (
-      <main className="container mx-auto px-4 py-8 text-center">
-        <h1 className="text-2xl font-bold mb-4">Ваша корзина пуста</h1>
-        <p className="text-gray-600 mb-6">Добавьте товары, чтобы они здесь появились.</p>
-        <Link href="/">
-          <Button>Перейти к покупкам</Button>
-        </Link>
-      </main>
-    );
-  }
+  
+  const handleRemoveItem = async (itemId: string) => {
+    try {
+      setIsUpdating(prev => ({ ...prev, [itemId]: true }));
+      await removeFromCart(itemId);
+    } catch (error) {
+      console.error('Ошибка при удалении товара:', error);
+    } finally {
+      setIsUpdating(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Ваша корзина</h1>
-      <div className="grid gap-6">
-        {cartItems.map((item) => (
-          <div key={item.id} className="flex items-center border-b pb-4">
-            <div className="flex-shrink-0 mr-4">
-              <Image
-                src={item.product.imageUrl || '/placeholder-product.jpg'}
-                alt={item.product.name}
-                width={80}
-                height={80}
-                objectFit="cover"
-                className="rounded-md"
-              />
-            </div>
-            <div className="flex-grow">
-              <Link href={`/products/${item.productId}`} className="text-lg font-semibold hover:underline">
-                {item.product.name}
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-8">Ваша корзина</h1>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Список товаров */}
+        <div className="lg:col-span-2 space-y-6">
+          {cartItems.length === 0 ? (
+            <div className="text-center py-12 border rounded-lg">
+              <ShoppingCart className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Ваша корзина пуста</h3>
+              <p className="text-gray-500 mb-4">Начните добавлять товары в корзину</p>
+              <Link href="/catalog">
+                <Button>В каталог товаров</Button>
               </Link>
-              {(item.size || item.color) && (
-                <p className="text-sm text-gray-600">
-                  {item.size && `Размер: ${item.size}`}
-                  {item.size && item.color && ', '}
-                  {item.color && `Цвет: ${item.color}`}
-                </p>
-              )}
-              <p className="text-gray-800">{item.product.price} ₽</p>
             </div>
-            <div className="flex items-center">
-              <input
-                type="number"
-                min="1"
-                value={item.quantity}
-                onChange={(e) => handleUpdateQuantity(item.id, parseInt(e.target.value))}
-                className="w-16 border rounded-md text-center mr-4"
-              />
-              <Button variant="outline" size="sm" onClick={() => handleRemoveItem(item.id)}>
-                Удалить
-              </Button>
+          ) : (
+            cartItems.map((item) => (
+              <div key={item.id} className="flex flex-col sm:flex-row border rounded-lg p-4">
+                {/* Изображение товара */}
+                <div className="w-full sm:w-32 h-32 bg-gray-100 rounded-lg overflow-hidden mb-4 sm:mb-0 sm:mr-6">
+                  <Image
+                    src={item.image || '/placeholder-product.jpg'}
+                    alt={item.name}
+                    width={128}
+                    height={128}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                
+                {/* Информация о товаре */}
+                <div className="flex-1">
+                  <div className="flex justify-between">
+                    <div>
+                      <h2 className="text-lg font-medium">{item.name}</h2>
+                      {item.size && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          Размер: <span className="font-medium">{item.size}</span>
+                        </p>
+                      )}
+                      {item.color && (
+                        <p className="text-sm text-gray-600">
+                          Цвет: <span className="font-medium">{item.color}</span>
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveItem(item.id)}
+                      disabled={isUpdating[item.id]}
+                      className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                      aria-label="Удалить из корзины"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center border rounded-md overflow-hidden">
+                      <button
+                        onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
+                        disabled={isUpdating[item.id] || item.quantity <= 1}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        aria-label="Уменьшить количество"
+                      >
+                        <Minus size={16} />
+                      </button>
+                      <span className="px-4 py-1 w-12 text-center">
+                        {isUpdating[item.id] ? '...' : item.quantity}
+                      </span>
+                      <button
+                        onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
+                        disabled={isUpdating[item.id]}
+                        className="px-3 py-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+                        aria-label="Увеличить количество"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                    <div className="text-lg font-medium">
+                      {new Intl.NumberFormat('ru-RU', {
+                        style: 'currency',
+                        currency: 'RUB',
+                        maximumFractionDigits: 0
+                      }).format(item.price * item.quantity)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        
+        {/* Итого */}
+        {cartItems.length > 0 && (
+          <div className="lg:col-span-1">
+            <div className="bg-gray-50 rounded-lg p-6 sticky top-4">
+              <h2 className="text-lg font-medium mb-4">Итого</h2>
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <span>Товары ({totalItems})</span>
+                  <span>
+                    {new Intl.NumberFormat('ru-RU', {
+                      style: 'currency',
+                      currency: 'RUB',
+                      maximumFractionDigits: 0
+                    }).format(
+                      cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+                    )}
+                  </span>
+                </div>
+                <div className="border-t pt-4">
+                  <div className="flex justify-between font-medium text-lg">
+                    <span>Итого</span>
+                    <span>
+                      {new Intl.NumberFormat('ru-RU', {
+                        style: 'currency',
+                        currency: 'RUB',
+                        maximumFractionDigits: 0
+                      }).format(totalPrice)}
+                    </span>
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleCheckout} 
+                  disabled={isCheckingOut}
+                  className="w-full mt-6"
+                >
+                  {isCheckingOut ? 'Оформляем...' : 'Оформить заказ'}
+                </Button>
+                <div className="text-sm text-gray-500 mt-4">
+                  <p>Бесплатная доставка от 5000 ₽</p>
+                  <p>Возврат в течение 14 дней</p>
+                </div>
+              </div>
             </div>
           </div>
-        ))}
+        )}
       </div>
-
-      <div className="mt-6 text-right">
-        <h2 className="text-xl font-bold">Итого: {totalAmount} ₽</h2>
-        {/* TODO: Add checkout button */}
-        <Button className="mt-4">Перейти к оформлению</Button>
-      </div>
-    </main>
+    </div>
   );
-} 
+}

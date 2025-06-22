@@ -6,6 +6,7 @@ import { ShoppingCart, Heart, Eye, Star, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { ProductImageSlider } from './ProductImageSlider';
+import { useCart } from '@/contexts/CartContext';
 
 interface ProductCardProps {
   id: string;
@@ -21,15 +22,7 @@ interface ProductCardProps {
   className?: string;
 }
 
-interface CartItem {
-  productId: string;
-  name: string;
-  price: number;
-  imageUrl: string;
-  quantity: number;
-  size: string | null;
-  color: string | null;
-}
+// CartItem type is imported from CartContext
 
 export default function ProductCard({
   id,
@@ -46,47 +39,29 @@ export default function ProductCard({
 }: ProductCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isWishlist, setIsWishlist] = useState(false);
+  const { addToCart } = useCart();
 
-  const addToCart = async (e: React.MouseEvent) => {
+  const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     try {
-      const currentCart = JSON.parse(localStorage.getItem('cart') || '[]') as CartItem[];
+      addToCart({
+        id,
+        name,
+        price,
+        imageUrl: images[0]?.url || '/placeholder-product.jpg'
+        // quantity is handled by CartContext
+      });
 
-      const itemToAdd: CartItem = {
-        productId: id,
-        name: name,
-        price: price,
-        imageUrl: images.length > 0 ? images[0].url : '/placeholder.jpg',
-        quantity: 1,
-        size: Array.isArray(size) && size.length > 0 ? size[0] : null,
-        color: Array.isArray(colors) && colors.length > 0 ? colors[0] : null,
-      };
-
-      const existingItemIndex = currentCart.findIndex(
-        (item) => 
-          item.productId === itemToAdd.productId &&
-          item.size === itemToAdd.size &&
-          item.color === itemToAdd.color
-      );
-
-      if (existingItemIndex > -1) {
-        currentCart[existingItemIndex].quantity += 1;
-      } else {
-        currentCart.push(itemToAdd);
-      }
-
-      localStorage.setItem('cart', JSON.stringify(currentCart));
-
+      // Visual feedback
       const button = e.currentTarget as HTMLButtonElement;
       button.classList.add('bg-green-500');
       setTimeout(() => {
         button.classList.remove('bg-green-500');
       }, 1000);
-
     } catch (error) {
-      console.error('Ошибка при работе с корзиной:', error);
+      console.error('Ошибка при добавлении в корзину:', error);
       alert('Не удалось добавить товар в корзину');
     }
   };
@@ -156,11 +131,12 @@ export default function ProductCard({
                 className="absolute bottom-3 left-0 right-0 flex justify-center gap-3 px-3"
               >
                 <button
-                  onClick={addToCart}
-                  className="bg-white hover:bg-gray-50 text-gray-800 p-2 rounded-full shadow-lg transform hover:scale-110 transition-all duration-200"
+                  onClick={handleAddToCart}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white text-gray-700 shadow-md hover:bg-gray-100 transition-colors hover:text-primary"
                   aria-label="Добавить в корзину"
+                  title="Добавить в корзину"
                 >
-                  <ShoppingCart className="w-5 h-5" />
+                  <ShoppingCart size={18} />
                 </button>
                 <button
                   onClick={toggleWishlist}

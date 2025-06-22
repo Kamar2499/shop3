@@ -2,6 +2,7 @@
 
 import { Session } from "next-auth";
 import { SessionProvider as NextAuthSessionProvider } from "next-auth/react";
+import { CartProvider } from "@/contexts/CartContext";
 
 interface CustomSession extends Session {
   user: {
@@ -11,6 +12,7 @@ interface CustomSession extends Session {
     image?: string | null;
     role: 'ADMIN' | 'SELLER' | 'BUYER';
   };
+  expires: string; // Добавляем обязательное свойство из Session
 }
 
 export function Providers({
@@ -22,7 +24,9 @@ export function Providers({
 }) {
   return (
     <NextAuthSessionProvider session={session}>
-      {children}
+      <CartProvider>
+        {children}
+      </CartProvider>
     </NextAuthSessionProvider>
   );
 }

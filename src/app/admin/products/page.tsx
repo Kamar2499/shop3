@@ -54,19 +54,32 @@ export default function ProductsAdminPage() {
         throw new Error('Сессия не найдена. Пожалуйста, войдите заново.');
       }
       
+      // Получаем токен из сессии
+      const token = (session as any)?.accessToken || (session as any)?.token;
+      if (!token) {
+        throw new Error('Токен доступа не найден. Пожалуйста, войдите заново.');
+      }
+      
       const isAdmin = session.user && 'role' in session.user && session.user.role === 'ADMIN';
       const url = isAdmin ? '/api/admin/products' : '/api/seller/products';
       
       const response = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${session.accessToken || ''}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        credentials: 'include' // Важно для передачи куки, если используется httpOnly
       });
+      
+      if (response.status === 401) {
+        // Если получили 401, возможно, токен истек
+        router.push('/auth/login?error=session-expired');
+        return;
+      }
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Ошибка при загрузке товаров');
+        throw new Error(errorData.error || `Ошибка при загрузке товаров: ${response.status}`);
       }
       
       const data = await response.json();
