@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Session } from 'next-auth';
 import { User, LogOut, ShoppingCart, Store, LayoutDashboard } from 'lucide-react';
+import { useCart } from '@/contexts/CartContext';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
@@ -26,40 +27,12 @@ interface CustomSession extends Session {
   };
 }
 
-interface CartItem {
-  productId: string;
-  name: string;
-  price: number;
-  imageUrl: string;
-  quantity: number;
-  size: string | null;
-  color: string | null;
-}
-
 export default function Navbar() {
   const { data: session } = useSession() as { data: CustomSession | null };
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [cartDataFromStorage, setCartDataFromStorage] = useState<CartItem[]>([]);
+  const { items: cartItems, totalItems } = useCart();
 
   const toggleCart = () => {
-    if (!isCartOpen) {
-      const storedCart = localStorage.getItem('cart');
-      if (storedCart) {
-        try {
-          const parsedCart = JSON.parse(storedCart) as CartItem[];
-          const cartItemsWithParsedPrice = parsedCart.map((item) => ({
-            ...item,
-            price: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
-          }));
-          setCartDataFromStorage(cartItemsWithParsedPrice);
-        } catch (error) {
-          console.error('Failed to parse cart data from localStorage:', error);
-          setCartDataFromStorage([]);
-        }
-      } else {
-        setCartDataFromStorage([]);
-      }
-    }
     setIsCartOpen(!isCartOpen);
   };
 
@@ -85,8 +58,17 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center space-x-2 sm:space-x-4">
-            <button onClick={toggleCart} className="p-2 rounded-full hover:bg-gray-100">
+            <button 
+              onClick={toggleCart} 
+              className="p-2 rounded-full hover:bg-gray-100 relative"
+              aria-label="Корзина"
+            >
               <ShoppingCart className="h-5 w-5 text-gray-800" />
+              {totalItems > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {totalItems > 9 ? '9+' : totalItems}
+                </span>
+              )}
             </button>
 
             {session ? (
@@ -162,7 +144,7 @@ export default function Navbar() {
           </div>
         </div>
       </div>
-      {isCartOpen && <CartWidgetNew onClose={() => setIsCartOpen(false)} cartData={cartDataFromStorage} />}
+      {isCartOpen && <CartWidgetNew onClose={() => setIsCartOpen(false)} />}
     </nav>
   );
 }
