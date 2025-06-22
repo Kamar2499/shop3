@@ -50,13 +50,25 @@ export default function ProductsAdminPage() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const isAdmin = session && session.user && 'role' in session.user && session.user.role === 'ADMIN';
-      const response = await fetch(
-        isAdmin
-          ? '/api/admin/products'
-          : '/api/seller/products'
-      );
-      if (!response.ok) throw new Error('Ошибка при загрузке товаров');
+      if (!session) {
+        throw new Error('Сессия не найдена. Пожалуйста, войдите заново.');
+      }
+      
+      const isAdmin = session.user && 'role' in session.user && session.user.role === 'ADMIN';
+      const url = isAdmin ? '/api/admin/products' : '/api/seller/products';
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${session.accessToken || ''}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Ошибка при загрузке товаров');
+      }
+      
       const data = await response.json();
       setProducts(data);
     } catch (err) {
@@ -106,6 +118,13 @@ export default function ProductsAdminPage() {
     e.preventDefault();
     setError('');
     setUploading(true);
+    
+    if (!session) {
+      setError('Сессия не найдена. Пожалуйста, войдите заново.');
+      setUploading(false);
+      return;
+    }
+
     try {
       let imageUrl = formData.imageUrl;
       
@@ -113,11 +132,20 @@ export default function ProductsAdminPage() {
       if (formData.imageFile) {
         const imgData = new FormData();
         imgData.append('file', formData.imageFile);
+        
         const uploadRes = await fetch('/api/upload', {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.accessToken || ''}`
+          },
           body: imgData,
         });
-        if (!uploadRes.ok) throw new Error('Ошибка загрузки изображения');
+        
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Ошибка загрузки изображения');
+        }
+        
         const uploadJson = await uploadRes.json();
         imageUrl = uploadJson.url;
       }
@@ -134,7 +162,10 @@ export default function ProductsAdminPage() {
 
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.accessToken || ''}`
+        },
         body: JSON.stringify(productData),
       });
 
@@ -155,17 +186,40 @@ export default function ProductsAdminPage() {
 
   const handleDelete = async (id: string, imageUrl: string) => {
     if (!confirm('Удалить товар?')) return;
+    
+    if (!session) {
+      setError('Сессия не найдена. Пожалуйста, войдите заново.');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Ошибка при удалении товара');
-      // Удаляем изображение
+      // Delete the product
+      const response = await fetch(`/api/products/${id}`, { 
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.accessToken || ''}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Ошибка при удалении товара');
+      }
+
+      // Delete the image if it exists
       if (imageUrl) {
         await fetch('/api/upload', {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.accessToken || ''}`
+          },
           body: JSON.stringify({ url: imageUrl }),
         });
       }
+      
+      // Refresh the products list
       fetchProducts();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Произошла ошибка');
