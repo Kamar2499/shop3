@@ -63,13 +63,20 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const token = request.headers.get('authorization')?.split(' ')[1];
-    if (!token) {
+    console.log('Request headers:', Object.fromEntries(request.headers.entries()));
+    const authHeader = request.headers.get('authorization');
+    console.log('Auth header:', authHeader);
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('No or invalid Authorization header');
       return NextResponse.json(
         { error: 'Требуется авторизация' },
         { status: 401 }
       );
     }
+    
+    const token = authHeader.split(' ')[1];
+    console.log('Extracted token:', token ? '[TOKEN_PRESENT]' : 'MISSING');
 
     const { id: userId } = verifyToken(token);
     const { productId, quantity, size, color } = await request.json();

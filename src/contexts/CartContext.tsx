@@ -1,6 +1,8 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import { Session } from 'next-auth';
 
 export interface CartItem {
   id: string;
@@ -26,14 +28,101 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
+  const { data: session } = useSession() as { data: (Session & { accessToken?: string }) | null };
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Загружаем корзину с сервера при инициализации
+  // Функция для выполнения авторизованных запросов
+  const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+    console.log('fetchWithAuth called with url:', url);
+    
+    if (!session) {
+      console.error('Сессия не найдена');
+      window.location.href = '/login';
+      throw new Error('Требуется авторизация');
+    }
+    
+    const token = session.accessToken;
+    console.log('Current session token:', token ? `[TOKEN_PRESENT, length: ${token.length}]` : 'MISSING');
+    
+    if (!token) {
+      console.error('Токен доступа не найден в сессии');
+      window.location.href = '/login';
+      throw new Error('Требуется авторизация');
+    }
+    
+    // Создаем новый объект headers, чтобы избежать мутаций
+    const headers = new Headers();
+    
+    // Устанавливаем Content-Type по умолчанию для JSON
+    const hasContentType = options.headers && 
+      ((options.headers instanceof Headers && options.headers.has('Content-Type')) ||
+       (Array.isArray(options.headers) && options.headers.some(([key]) => key.toLowerCase() === 'content-type')) ||
+       (typeof options.headers === 'object' && 'Content-Type' in options.headers));
+      
+    if (!hasContentType && !(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
+    
+    // Добавляем авторизационный токен
+    headers.set('Authorization', `Bearer ${token}`);
+    
+    // Добавляем переданные заголовки
+    if (options.headers) {
+      if (options.headers instanceof Headers) {
+        options.headers.forEach((value, key) => {
+          headers.set(key, value);
+        });
+      } else if (Array.isArray(options.headers)) {
+        options.headers.forEach(([key, value]) => {
+          if (value) headers.set(key, value);
+        });
+      } else {
+        Object.entries(options.headers).forEach(([key, value]) => {
+          if (value) headers.set(key, String(value));
+        });
+      }
+    }
+    
+    // Устанавливаем Content-Type по умолчанию, если не установлен
+    if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+      headers.set('Content-Type', 'application/json');
+    }
+    
+    // Добавляем токен авторизации
+    headers.set('Authorization', `Bearer ${token}`);
+    
+    console.log('Sending request to:', url, {
+      method: options.method || 'GET',
+      headers: Object.fromEntries(headers.entries()),
+      hasBody: !!options.body
+    });
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    if (response.status === 401) {
+      // Handle unauthorized (e.g., redirect to login)
+      console.error('Ошибка авторизации');
+      throw new Error('Требуется авторизация');
+    }
+
+    return response;
+  }, [session]);
+
+  // Загружаем корзину с сервера при инициализации и при изменении сессии
   useEffect(() => {
     const fetchCart = async () => {
+      if (!session) {
+        setItems([]);
+        setIsLoaded(true);
+        return;
+      }
+
       try {
-        const response = await fetch('/api/cart');
+        const response = await fetchWithAuth('/api/cart');
         if (response.ok) {
           const data = await response.json();
           setItems(data.items.map((item: any) => ({
@@ -55,15 +144,18 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     };
 
     fetchCart();
-  }, []);
+  }, [session, fetchWithAuth]);
 
   const addToCart = async (item: Omit<CartItem, 'id' | 'quantity'>) => {
+    if (!session) {
+      // Если пользователь не авторизован, перенаправляем на страницу входа
+      window.location.href = '/login';
+      return;
+    }
+
     try {
-      const response = await fetch('/api/cart', {
+      const response = await fetchWithAuth('/api/cart', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           productId: item.productId,
           quantity: 1,
@@ -73,7 +165,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Не удалось добавить товар в корзину');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Не удалось добавить товар в корзину');
       }
 
       const data = await response.json();

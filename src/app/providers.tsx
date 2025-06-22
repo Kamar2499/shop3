@@ -4,6 +4,8 @@ import { Session } from "next-auth";
 import { SessionProvider as NextAuthSessionProvider } from "next-auth/react";
 import { CartProvider } from "@/contexts/CartContext";
 
+// Тип сессии уже определен в src/types/next-auth.d.ts
+// Используем его вместо дублирования
 interface CustomSession extends Session {
   user: {
     id: string;
@@ -12,7 +14,8 @@ interface CustomSession extends Session {
     image?: string | null;
     role: 'ADMIN' | 'SELLER' | 'BUYER';
   };
-  expires: string; // Добавляем обязательное свойство из Session
+  accessToken: string;
+  expires: string;
 }
 
 export function Providers({

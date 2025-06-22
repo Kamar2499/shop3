@@ -1,4 +1,5 @@
-import { NextAuthOptions } from 'next-auth';
+import NextAuth, { type Session, type User } from 'next-auth';
+import type { JWT } from 'next-auth/jwt';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -7,23 +8,17 @@ import { findUserByEmail } from './repositories/user.repository';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
-interface User {
-  id: string;
-  email: string;
-  name: string | null;
-  role: UserRole;
-  image?: string | null;
-}
+// User type is now defined in next-auth.d.ts
 
-export const authOptions: NextAuthOptions = {
+export const authOptions = {
   providers: [
     CredentialsProvider({
       name: 'credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Пароль', type: 'password' },
-      },
-      async authorize(credentials) {
+      } as const,
+      async authorize(credentials: Record<string, string> | undefined) {
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Требуется ввести email и пароль');
         }
@@ -59,23 +54,38 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any; user: any }) {
       if (user) {
+        // Type assertion to include our custom fields
         token.role = user.role;
         token.id = user.id;
+        // Generate a new JWT token for API authentication
+        token.accessToken = jwt.sign(
+          { 
+            id: user.id, 
+            email: user.email, 
+            role: user.role 
+          },
+          JWT_SECRET,
+          { expiresIn: '1h' }
+        );
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (session.user) {
-        session.user.role = token.role as UserRole;
-        session.user.id = token.id as string;
+        // Add custom fields to session
+        session.user.role = token.role;
+        session.user.id = token.id;
+        // Add access token to session
+        session.accessToken = token.accessToken;
       }
       return session;
     },
   },
   pages: {
     signIn: '/login',
+    error: '/login',
   },
 };
 
@@ -92,9 +102,32 @@ export function generateToken(user: { id: string; email: string; role: UserRole 
 }
 
 export function verifyToken(token: string): { id: string; email: string; role: UserRole } {
+  console.log('Verifying token...');
+  console.log('Token length:', token.length);
+  
+  if (!JWT_SECRET) {
+    console.error('JWT_SECRET is not defined');
+    throw new Error('Ошибка конфигурации сервера');
+  }
+  
+  if (!token || typeof token !== 'string') {
+    console.error('Invalid token format:', token);
+    throw new Error('Неверный формат токена');
+  }
+  
   try {
-    return jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: UserRole };
+    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: UserRole };
+    console.log('Token verified successfully for user:', decoded.email);
+    return decoded;
   } catch (error) {
-    throw new Error('Недействительный токен');
+    console.error('Token verification failed:', error);
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new Error('Срок действия токена истек');
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      throw new Error('Недействительный токен');
+    } else {
+      console.error('Unexpected error during token verification:', error);
+      throw new Error('Ошибка проверки токена');
+    }
   }
 }
