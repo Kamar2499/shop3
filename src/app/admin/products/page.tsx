@@ -23,6 +23,7 @@ export default function ProductsAdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -32,6 +33,7 @@ export default function ProductsAdminPage() {
     size: '',
     color: '',
     stock: '',
+    imageUrl: ''
   });
   const [uploading, setUploading] = useState(false);
 
@@ -70,12 +72,44 @@ export default function ProductsAdminPage() {
     }
   };
 
+  const handleEdit = (product: Product) => {
+    setEditingId(product.id);
+    setFormData({
+      name: product.name,
+      description: product.description,
+      price: product.price.toString(),
+      imageFile: null,
+      category: product.category,
+      size: product.size,
+      color: product.color,
+      stock: product.stock.toString(),
+      imageUrl: product.imageUrl
+    });
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      imageFile: null,
+      category: '',
+      size: '',
+      color: '',
+      stock: '',
+      imageUrl: ''
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setUploading(true);
     try {
-      let imageUrl = '';
+      let imageUrl = formData.imageUrl;
+      
+      // Upload new image if provided
       if (formData.imageFile) {
         const imgData = new FormData();
         imgData.append('file', formData.imageFile);
@@ -87,28 +121,31 @@ export default function ProductsAdminPage() {
         const uploadJson = await uploadRes.json();
         imageUrl = uploadJson.url;
       }
-      const response = await fetch('/api/products', {
-        method: 'POST',
+
+      const productData = {
+        ...formData,
+        imageUrl,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+      };
+
+      const url = editingId ? `/api/products/${editingId}` : '/api/products';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          imageUrl,
-          price: parseFloat(formData.price),
-          stock: parseInt(formData.stock),
-        }),
+        body: JSON.stringify(productData),
       });
-      if (!response.ok) throw new Error('Ошибка при создании товара');
-      setFormData({
-        name: '',
-        description: '',
-        price: '',
-        imageFile: null,
-        category: '',
-        size: '',
-        color: '',
-        stock: '',
-      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Ошибка при сохранении товара');
+      }
+
+      resetForm();
       fetchProducts();
+      setEditingId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Произошла ошибка');
     } finally {
@@ -185,9 +222,20 @@ export default function ProductsAdminPage() {
               <label className="block text-sm font-medium text-gray-700">В наличии (шт)</label>
               <input type="number" required min="0" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" value={formData.stock} onChange={e => setFormData({ ...formData, stock: e.target.value })} />
             </div>
-            <button type="submit" disabled={uploading} className="w-full bg-indigo-600 text-white py-2 rounded-md font-semibold hover:bg-indigo-700 transition">
-              {uploading ? 'Добавление...' : 'Добавить товар'}
-            </button>
+            <div className="flex gap-2">
+              <button type="submit" disabled={uploading} className="flex-1 bg-indigo-600 text-white py-2 rounded-md font-semibold hover:bg-indigo-700 transition">
+                {uploading ? 'Сохранение...' : editingId ? 'Обновить товар' : 'Добавить товар'}
+              </button>
+              {editingId && (
+                <button 
+                  type="button" 
+                  onClick={resetForm}
+                  className="px-4 bg-gray-200 text-gray-700 py-2 rounded-md font-semibold hover:bg-gray-300 transition"
+                >
+                  Отмена
+                </button>
+              )}
+            </div>
           </form>
         </div>
         <div>
@@ -205,7 +253,20 @@ export default function ProductsAdminPage() {
                   <div className="text-gray-700">Цвет: {product.color}</div>
                   <div className="text-gray-700">В наличии: {product.stock}</div>
                 </div>
-                <button onClick={() => handleDelete(product.id, product.imageUrl)} className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition">Удалить</button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleEdit(product)}
+                    className="text-blue-600 hover:text-blue-800"
+                  >
+                    Редактировать
+                  </button>
+                  <button 
+                    onClick={() => handleDelete(product.id, product.imageUrl)} 
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    Удалить
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
